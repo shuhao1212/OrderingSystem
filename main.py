@@ -8,7 +8,15 @@ from db_utils import DatabaseManager
 from models import CartItem, Dish
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)
+_secret_path = os.path.join("data", ".secret_key")
+if os.path.exists(_secret_path):
+    with open(_secret_path, "rb") as f:
+        app.secret_key = f.read()
+else:
+    app.secret_key = os.urandom(24)
+    os.makedirs("data", exist_ok=True)
+    with open(_secret_path, "wb") as f:
+        f.write(app.secret_key)
 
 BUSINESS_ACCOUNT = {"password": "123456", "role": "商家端"}
 
@@ -241,5 +249,4 @@ def api_rate_order(order_id: int) -> str:
 
 
 if __name__ == "__main__":
-    get_db().seed_all_dishes()
     app.run(debug=True, port=5000)

@@ -60,10 +60,8 @@ class DatabaseManager:
         except sqlite3.OperationalError:
             pass
         if self.count_dishes() == 0:
-            self.add_dish(Dish(name="宫保鸡丁", price=28.0, description="经典川味，酸甜微辣", image="宫保鸡丁.jpg"))
-            self.add_dish(Dish(name="番茄炒蛋", price=16.0, description="经典家常菜，酸甜开胃", image="番茄炒蛋.jpg"))
-            self.add_dish(Dish(name="麻婆豆腐", price=15.0, description="麻辣鲜香，下饭神器", image="麻婆豆腐.jpg"))
-        self.register_customer("顾客", "123456")
+            self.seed_all_dishes()
+            self.register_customer("顾客", "123456")
 
     def count_dishes(self) -> int:
         row = self.connection.execute("SELECT COUNT(*) AS count FROM dishes").fetchone()
@@ -169,7 +167,7 @@ class DatabaseManager:
 
     def seed_all_dishes(self) -> int:
         dishes_data = [
-            ("1饭", 2.0, "白米饭"),
+            ("米饭", 2.0, "白米饭"),
             ("五香豆干", 12.0, "五香卤制，软嫩入味"),
             ("农家小炒肉", 26.0, "农家风味，香辣下饭"),
             ("凉拌海带丝", 10.0, "清爽开胃小菜"),
