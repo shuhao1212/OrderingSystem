@@ -20,18 +20,22 @@
                 <div class="card shadow-sm">
                     <div class="card-header fw-bold">添加菜品</div>
                     <div class="card-body">
-                        <form id="add-form">
+                        <form id="add-form" enctype="multipart/form-data">
                             <div class="mb-2">
                                 <label class="form-label">名称</label>
-                                <input id="dish-name" class="form-control" required>
+                                <input id="dish-name" name="name" class="form-control" required>
                             </div>
                             <div class="mb-2">
                                 <label class="form-label">价格</label>
-                                <input id="dish-price" type="number" step="0.01" class="form-control" required>
+                                <input id="dish-price" name="price" type="number" step="0.01" class="form-control" required>
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label">介绍</label>
+                                <textarea id="dish-desc" name="description" class="form-control" rows="2" required></textarea>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">介绍</label>
-                                <textarea id="dish-desc" class="form-control" rows="2" required></textarea>
+                                <label class="form-label">图片</label>
+                                <input id="dish-image" name="image" type="file" accept="image/*" class="form-control">
                             </div>
                             <button type="submit" class="btn btn-success w-100">添加菜品</button>
                         </form>
@@ -51,14 +55,14 @@
                         <table class="table table-hover mb-0">
                             <thead class="table-dark">
                                 <tr>
-                                    <th>图片</th><th>编号</th><th>名称</th><th>价格</th><th>评分</th><th>介绍</th><th>操作</th>
+                                    <th>#</th><th>图片</th><th>名称</th><th>价格</th><th>评分</th><th>介绍</th><th>操作</th>
                                 </tr>
                             </thead>
                             <tbody id="dish-table">
                                 {% for d in dishes %}
                                 <tr>
+                                    <td>{{ loop.index }}</td>
                                     <td><img src="{{ url_for('static', filename='images/' + d.image) if d.image else '' }}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;" onerror="this.style.display='none'"></td>
-                                    <td>{{ d.id }}</td>
                                     <td>{{ d.name }}</td>
                                     <td>¥{{ "%.2f"|format(d.price) }}</td>
                                     <td>⭐{{ "%.1f"|format(d.rating) }}</td>
@@ -85,11 +89,8 @@
 
         document.getElementById('add-form').addEventListener('submit', async e => {
             e.preventDefault();
-            const body = new URLSearchParams({
-                name: document.getElementById('dish-name').value,
-                price: document.getElementById('dish-price').value,
-                description: document.getElementById('dish-desc').value,
-            });
+            const form = e.target;
+            const body = new FormData(form);
             const res = await fetch('/api/dish/add', { method: 'POST', body });
             const data = await res.json();
             showMsg(data.ok ? '添加成功' : data.msg, data.ok);
@@ -110,8 +111,8 @@
             const res = await fetch(url);
             const dishes = await res.json();
             const tbody = document.getElementById('dish-table');
-            tbody.innerHTML = dishes.map(d =>
-                `<tr><td><img src="/static/images/${d.image || ''}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;" onerror="this.style.display='none'"></td><td>${d.id}</td><td>${d.name}</td><td>¥${d.price.toFixed(2)}</td><td>⭐${d.rating.toFixed(1)}</td><td>${d.description}</td><td><button class="btn btn-danger btn-sm" onclick="deleteDish(${d.id})">删除</button></td></tr>`
+            tbody.innerHTML = dishes.map((d, i) =>
+                `<tr><td>${i + 1}</td><td><img src="/static/images/${d.image || ''}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;" onerror="this.style.display='none'"></td><td>${d.name}</td><td>¥${d.price.toFixed(2)}</td><td>⭐${d.rating.toFixed(1)}</td><td>${d.description}</td><td><button class="btn btn-danger btn-sm" onclick="deleteDish(${d.id})">删除</button></td></tr>`
             ).join('');
         });
     </script>

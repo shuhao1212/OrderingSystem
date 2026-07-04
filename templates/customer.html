@@ -32,13 +32,13 @@
                             <div class="card-body p-0" style="max-height:420px;overflow-y:auto;">
                                 <table class="table table-hover mb-0">
                                     <thead class="table-dark sticky-top">
-                                        <tr><th>图片</th><th>名称</th><th>价格</th><th>评分</th><th>介绍</th><th>数量</th><th>操作</th></tr>
+                                        <tr><th>#</th><th>图片</th><th>名称</th><th>价格</th><th>评分</th><th>介绍</th><th>数量</th><th>操作</th></tr>
                                     </thead>
                                     <tbody id="dish-table">
                                         {% for d in dishes %}
                                         <tr>
+                                            <td>{{ loop.index }}</td>
                                             <td><img src="{{ url_for('static', filename='images/' + d.image) if d.image else '' }}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;" onerror="this.style.display='none'"></td>
-                                            <td>{{ d.id }}</td>
                                             <td>{{ d.name }}</td>
                                             <td>¥{{ "%.2f"|format(d.price) }}</td>
                                             <td>⭐{{ "%.1f"|format(d.rating) }}</td>
@@ -222,8 +222,9 @@
             const url = q ? `/api/dish/search?q=${encodeURIComponent(q)}` : '/api/dish/search';
             const res = await fetch(url);
             const dishes = await res.json();
-            document.getElementById('dish-table').innerHTML = dishes.map(d =>
+            document.getElementById('dish-table').innerHTML = dishes.map((d, i) =>
                 `<tr>
+                    <td>${i + 1}</td>
                     <td><img src="/static/images/${d.image || ''}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;" onerror="this.style.display='none'"></td>
                     <td>${d.name}</td><td>¥${d.price.toFixed(2)}</td><td>⭐${d.rating.toFixed(1)}</td>
                     <td>${d.description}</td>

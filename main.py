@@ -128,7 +128,17 @@ def api_add_dish() -> str:
         price = float(price_text)
     except ValueError:
         return jsonify({"ok": False, "msg": "价格必须是数字"})
-    get_db().add_dish(Dish(name=name, price=price, description=description))
+
+    image = ""
+    file = request.files.get("image")
+    if file and file.filename:
+        import uuid
+        ext = file.filename.rsplit(".", 1)[-1].lower()
+        if ext in ("jpg", "jpeg", "png", "gif", "webp"):
+            image = f"{uuid.uuid4().hex[:8]}_{file.filename}"
+            file.save(os.path.join("static", "images", image))
+
+    get_db().add_dish(Dish(name=name, price=price, description=description, image=image))
     return jsonify({"ok": True})
 
 
