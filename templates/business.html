@@ -51,12 +51,13 @@
                         <table class="table table-hover mb-0">
                             <thead class="table-dark">
                                 <tr>
-                                    <th>编号</th><th>名称</th><th>价格</th><th>评分</th><th>介绍</th><th>操作</th>
+                                    <th>图片</th><th>编号</th><th>名称</th><th>价格</th><th>评分</th><th>介绍</th><th>操作</th>
                                 </tr>
                             </thead>
                             <tbody id="dish-table">
                                 {% for d in dishes %}
                                 <tr>
+                                    <td><img src="{{ url_for('static', filename='images/' + d.image) if d.image else '' }}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;" onerror="this.style.display='none'"></td>
                                     <td>{{ d.id }}</td>
                                     <td>{{ d.name }}</td>
                                     <td>¥{{ "%.2f"|format(d.price) }}</td>
@@ -110,7 +111,7 @@
             const dishes = await res.json();
             const tbody = document.getElementById('dish-table');
             tbody.innerHTML = dishes.map(d =>
-                `<tr><td>${d.id}</td><td>${d.name}</td><td>¥${d.price.toFixed(2)}</td><td>⭐${d.rating.toFixed(1)}</td><td>${d.description}</td><td><button class="btn btn-danger btn-sm" onclick="deleteDish(${d.id})">删除</button></td></tr>`
+                `<tr><td><img src="/static/images/${d.image || ''}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;" onerror="this.style.display='none'"></td><td>${d.id}</td><td>${d.name}</td><td>¥${d.price.toFixed(2)}</td><td>⭐${d.rating.toFixed(1)}</td><td>${d.description}</td><td><button class="btn btn-danger btn-sm" onclick="deleteDish(${d.id})">删除</button></td></tr>`
             ).join('');
         });
     </script>

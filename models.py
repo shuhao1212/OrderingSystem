@@ -10,6 +10,7 @@ class Dish:
     price: float
     description: str
     rating: float = 0.0
+    image: str = ""
     id: int | None = None
 
 

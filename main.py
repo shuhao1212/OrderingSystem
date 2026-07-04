@@ -148,7 +148,7 @@ def api_search_dish() -> str:
     else:
         dishes = get_db().list_dishes()
     return jsonify([
-        {"id": d.id, "name": d.name, "price": d.price, "rating": d.rating, "description": d.description}
+        {"id": d.id, "name": d.name, "price": d.price, "rating": d.rating, "description": d.description, "image": d.image}
         for d in dishes
     ])
 
@@ -231,4 +231,5 @@ def api_rate_order(order_id: int) -> str:
 
 
 if __name__ == "__main__":
+    get_db().seed_all_dishes()
     app.run(debug=True, port=5000)
