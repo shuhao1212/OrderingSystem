@@ -12,7 +12,7 @@ class DatabaseManager:
     def __init__(self, db_path: str = "data/ordering.db") -> None:
         self.db_path = db_path
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        self.connection = sqlite3.connect(self.db_path)
+        self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
         self.connection.row_factory = sqlite3.Row
         self.initialize()
 
@@ -41,6 +41,15 @@ class DatabaseManager:
                 )
                 """
             )
+            self.connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS customers (
+                    username TEXT PRIMARY KEY,
+                    password TEXT NOT NULL,
+                    role TEXT NOT NULL DEFAULT '顾客端'
+                )
+                """
+            )
         try:
             self.connection.execute("ALTER TABLE orders ADD COLUMN rated INTEGER DEFAULT 0")
         except sqlite3.OperationalError:
@@ -49,6 +58,7 @@ class DatabaseManager:
             self.add_dish(Dish(name="宫保鸡丁", price=28.0, description="经典川味，酸甜微辣"))
             self.add_dish(Dish(name="番茄鸡蛋面", price=18.0, description="家常汤面，暖胃好吃"))
             self.add_dish(Dish(name="牛肉汉堡", price=35.0, description="酥脆面包搭配嫩牛肉"))
+        self.register_customer("顾客", "123456")
 
     def count_dishes(self) -> int:
         row = self.connection.execute("SELECT COUNT(*) AS count FROM dishes").fetchone()
@@ -151,6 +161,33 @@ class DatabaseManager:
         with self.connection:
             cursor = self.connection.execute("UPDATE orders SET rated = 1 WHERE id = ?", (order_id,))
         return cursor.rowcount > 0
+
+    def register_customer(self, username: str, password: str) -> tuple[bool, str]:
+        if not username or not password:
+            return False, "用户名和密码不能为空"
+        existing = self.connection.execute(
+            "SELECT username FROM customers WHERE username = ?", (username,)
+        ).fetchone()
+        if existing:
+            return False, "该用户名已被注册"
+        try:
+            with self.connection:
+                self.connection.execute(
+                    "INSERT INTO customers (username, password, role) VALUES (?, ?, '顾客端')",
+                    (username, password),
+                )
+            return True, "注册成功"
+        except sqlite3.IntegrityError:
+            return False, "该用户名已被注册"
+
+    def validate_customer(self, username: str, password: str) -> dict | None:
+        row = self.connection.execute(
+            "SELECT username, password, role FROM customers WHERE username = ? AND password = ?",
+            (username, password),
+        ).fetchone()
+        if row is None:
+            return None
+        return {"username": row["username"], "role": row["role"]}
 
     def close(self) -> None:
         self.connection.close()
