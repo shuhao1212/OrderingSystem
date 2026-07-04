@@ -36,10 +36,15 @@ class DatabaseManager:
                     customer_name TEXT NOT NULL,
                     items TEXT NOT NULL,
                     total_price REAL NOT NULL,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    rated INTEGER DEFAULT 0
                 )
                 """
             )
+        try:
+            self.connection.execute("ALTER TABLE orders ADD COLUMN rated INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
         if self.count_dishes() == 0:
             self.add_dish(Dish(name="宫保鸡丁", price=28.0, description="经典川味，酸甜微辣"))
             self.add_dish(Dish(name="番茄鸡蛋面", price=18.0, description="家常汤面，暖胃好吃"))
@@ -126,6 +131,26 @@ class DatabaseManager:
             }
             for row in rows
         ]
+
+    def search_dishes(self, keyword: str) -> List[Dish]:
+        keyword = f"%{keyword}%"
+        rows = self.connection.execute(
+            "SELECT id, name, price, description, rating FROM dishes WHERE name LIKE ? OR description LIKE ? ORDER BY rating DESC, name ASC",
+            (keyword, keyword),
+        ).fetchall()
+        return [
+            Dish(id=row["id"], name=row["name"], price=row["price"], description=row["description"], rating=row["rating"])
+            for row in rows
+        ]
+
+    def is_order_rated(self, order_id: int) -> bool:
+        row = self.connection.execute("SELECT rated FROM orders WHERE id = ?", (order_id,)).fetchone()
+        return row is not None and bool(row["rated"])
+
+    def mark_order_rated(self, order_id: int) -> bool:
+        with self.connection:
+            cursor = self.connection.execute("UPDATE orders SET rated = 1 WHERE id = ?", (order_id,))
+        return cursor.rowcount > 0
 
     def close(self) -> None:
         self.connection.close()
