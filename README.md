@@ -161,6 +161,8 @@ main.py（Flask 路由 + API）→ templates/*.html（Jinja2 + Bootstrap）
 | session 随机失效 | `secret_key` 从 `os.urandom` 改为文件持久化（`data/.secret_key`） |
 | 重复种子调用 | 移除 `main.py` 中冗余的 `seed_all_dishes()` |
 | 登录页安全 | 移除用户名/密码预填值，改为 placeholder 提示 |
+| 清理废弃代码 | 删除 v1.0 遗留的 `ui.py`（Tkinter 桌面版），项目统一为 Flask |
+| 文档完善 | 新增 `答辩指南.md`，含代码导读、修改速查、10 道答辩模拟题 |
 
 ### 架构评价
 

@@ -1,3 +1,4 @@
+# AI assisted (GitHub Copilot / DeepSeek V4 Pro): debugging & code formatting
 from __future__ import annotations
 
 import os
@@ -18,7 +19,7 @@ else:
     with open(_secret_path, "wb") as f:
         f.write(app.secret_key)
 
-BUSINESS_ACCOUNT = {"password": "123456", "role": "商家端"}
+BUSINESS_ACCOUNT = {"password": "88888888", "role": "商家端"}
 
 
 def get_db() -> DatabaseManager:

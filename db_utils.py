@@ -1,3 +1,4 @@
+# AI assisted (GitHub Copilot / DeepSeek V4 Pro): debugging & seed data formatting
 from __future__ import annotations
 
 import json
@@ -165,6 +166,7 @@ class DatabaseManager:
             cursor = self.connection.execute("UPDATE orders SET rated = 1 WHERE id = ?", (order_id,))
         return cursor.rowcount > 0
 
+    # AI assisted (GitHub Copilot / DeepSeek V4 Pro): seed data formatting
     def seed_all_dishes(self) -> int:
         dishes_data = [
             ("米饭", 2.0, "白米饭"),
