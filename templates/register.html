@@ -1,3 +1,12 @@
+<!--
+============================================================
+  register.html —— 顾客注册页面
+  --------------------------------------------------------
+  功能：新顾客输入用户名和密码完成注册
+  后端：POST /register → main.py register() 处理
+  注意：不能注册 "商家" 这个用户名
+============================================================
+-->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -15,6 +24,7 @@
         <form method="POST">
             <div class="mb-3">
                 <label class="form-label">用户名</label>
+                <!-- autofocus：页面加载后自动聚焦到此输入框 -->
                 <input name="username" class="form-control" required autofocus>
             </div>
             <div class="mb-3">

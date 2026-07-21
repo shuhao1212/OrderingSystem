@@ -1,3 +1,20 @@
+<!--
+============================================================
+  business.html —— 商家端（菜品管理页面）
+  --------------------------------------------------------
+  功能：
+    1. 添加新菜品（名称/价格/介绍/上传图片）
+    2. 删除已有菜品
+    3. 搜索菜品（实时 AJAX 过滤）
+    4. 浏览全部菜品（表格含缩略图）
+
+  布局：左侧表单 + 右侧表格（Bootstrap 栅格 col-md-4 + col-md-8）
+  后端 API：
+    POST /api/dish/add        → 添加菜品
+    POST /api/dish/<id>/delete → 删除菜品
+    GET  /api/dish/search?q=  → 搜索菜品
+============================================================
+-->
 <!-- AI assisted (GitHub Copilot / DeepSeek V4 Pro): frontend layout debugging -->
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -9,6 +26,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </head>
 <body>
+    <!-- 顶部导航栏：深色背景 + 退出按钮 -->
     <nav class="navbar navbar-dark bg-dark px-4">
         <span class="navbar-brand">🍳 商家端 - {{ session.username }}</span>
         <a href="/logout" class="btn btn-outline-light btn-sm">退出登录</a>
@@ -16,11 +34,12 @@
 
     <div class="container-fluid mt-3">
         <div class="row">
-            <!-- 左侧：添加菜品 -->
+            <!-- ======== 左侧：添加菜品表单 ======== -->
             <div class="col-md-4">
                 <div class="card shadow-sm">
                     <div class="card-header fw-bold">添加菜品</div>
                     <div class="card-body">
+                        <!-- enctype="multipart/form-data" 是文件上传的关键 -->
                         <form id="add-form" enctype="multipart/form-data">
                             <div class="mb-2">
                                 <label class="form-label">名称</label>
@@ -36,20 +55,23 @@
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">图片</label>
+                                <!-- accept="image/*" 限制只能选择图片文件 -->
                                 <input id="dish-image" name="image" type="file" accept="image/*" class="form-control">
                             </div>
                             <button type="submit" class="btn btn-success w-100">添加菜品</button>
                         </form>
                     </div>
                 </div>
+                <!-- 操作反馈消息区域 -->
                 <div id="msg-box" class="mt-2"></div>
             </div>
 
-            <!-- 右侧：菜单列表 -->
+            <!-- ======== 右侧：菜品列表 ======== -->
             <div class="col-md-8">
                 <div class="card shadow-sm">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <span class="fw-bold">当前菜单</span>
+                        <!-- 搜索框：输入即触发 AJAX 请求 -->
                         <input id="search-input" class="form-control form-control-sm w-auto" placeholder="搜索菜品...">
                     </div>
                     <div class="card-body p-0">
@@ -60,15 +82,23 @@
                                 </tr>
                             </thead>
                             <tbody id="dish-table">
+                                <!-- Jinja2 循环渲染菜品列表 -->
                                 {% for d in dishes %}
                                 <tr>
+                                    <!-- loop.index 是行号（从1开始），删除后自动连续 -->
                                     <td>{{ loop.index }}</td>
-                                    <td><img src="{{ url_for('static', filename='images/' + d.image) if d.image else '' }}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;" onerror="this.style.display='none'"></td>
+                                    <td>
+                                        <!-- 缩略图：60x60px，圆角，保持比例裁剪 -->
+                                        <img src="{{ url_for('static', filename='images/' + d.image) if d.image else '' }}"
+                                             style="width:60px;height:60px;object-fit:cover;border-radius:6px;"
+                                             onerror="this.style.display='none'">
+                                    </td>
                                     <td>{{ d.name }}</td>
                                     <td>¥{{ "%.2f"|format(d.price) }}</td>
                                     <td>⭐{{ "%.1f"|format(d.rating) }}</td>
                                     <td>{{ d.description }}</td>
                                     <td>
+                                        <!-- d.id 传给 JS 函数用于精确删除 -->
                                         <button class="btn btn-danger btn-sm" onclick="deleteDish({{ d.id }})">删除</button>
                                     </td>
                                 </tr>
@@ -82,22 +112,26 @@
     </div>
 
     <script>
+        // ========== 工具函数：显示操作反馈 ==========
         const msgBox = document.getElementById('msg-box');
         function showMsg(msg, ok) {
             msgBox.innerHTML = `<div class="alert alert-${ok ? 'success' : 'danger'} py-2">${msg}</div>`;
-            setTimeout(() => msgBox.innerHTML = '', 3000);
+            setTimeout(() => msgBox.innerHTML = '', 3000);  // 3秒后自动消失
         }
 
+        // ========== 添加菜品（含图片上传） ==========
         document.getElementById('add-form').addEventListener('submit', async e => {
             e.preventDefault();
             const form = e.target;
+            // 用 FormData 包装表单，自动处理文件上传
             const body = new FormData(form);
             const res = await fetch('/api/dish/add', { method: 'POST', body });
             const data = await res.json();
             showMsg(data.ok ? '添加成功' : data.msg, data.ok);
-            if (data.ok) location.reload();
+            if (data.ok) location.reload();  // 添加成功后刷新页面
         });
 
+        // ========== 删除菜品 ==========
         async function deleteDish(id) {
             if (!confirm('确认删除？')) return;
             const res = await fetch(`/api/dish/${id}/delete`, { method: 'POST' });
@@ -106,14 +140,23 @@
             if (data.ok) location.reload();
         }
 
+        // ========== 搜索菜品（实时 AJAX） ==========
         document.getElementById('search-input').addEventListener('input', async function() {
             const q = this.value.trim();
+            // 空搜索返回全部，否则传 ?q= 参数
             const url = q ? `/api/dish/search?q=${encodeURIComponent(q)}` : '/api/dish/search';
             const res = await fetch(url);
             const dishes = await res.json();
             const tbody = document.getElementById('dish-table');
+            // (d, i) => i+1 生成连续序号
             tbody.innerHTML = dishes.map((d, i) =>
-                `<tr><td>${i + 1}</td><td><img src="/static/images/${d.image || ''}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;" onerror="this.style.display='none'"></td><td>${d.name}</td><td>¥${d.price.toFixed(2)}</td><td>⭐${d.rating.toFixed(1)}</td><td>${d.description}</td><td><button class="btn btn-danger btn-sm" onclick="deleteDish(${d.id})">删除</button></td></tr>`
+                `<tr>
+                    <td>${i + 1}</td>
+                    <td><img src="/static/images/${d.image || ''}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;" onerror="this.style.display='none'"></td>
+                    <td>${d.name}</td><td>¥${d.price.toFixed(2)}</td>
+                    <td>⭐${d.rating.toFixed(1)}</td><td>${d.description}</td>
+                    <td><button class="btn btn-danger btn-sm" onclick="deleteDish(${d.id})">删除</button></td>
+                </tr>`
             ).join('');
         });
     </script>

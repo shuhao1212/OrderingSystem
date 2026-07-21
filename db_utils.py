@@ -1,8 +1,24 @@
-# AI assisted (GitHub Copilot / DeepSeek V4 Pro): debugging & seed data formatting
+"""
+db_utils.py —— 数据库工具类（数据访问层）
+==========================================
+封装所有 SQLite3 操作，上层 main.py 不直接写 SQL。
+核心类 DatabaseManager 提供：建表、CRUD、搜索、评分、订单、注册。
+
+设计原则：
+- 单一职责：只做数据库操作，不涉及界面或业务逻辑
+- 连接复用：整个应用共用一个 SQLite 连接（app._db 缓存）
+- 线程安全：check_same_thread=False 允许 Flask 多线程访问
+
+三张核心表：
+- dishes    : 菜品（id, name, price, description, rating, image）
+- orders    : 订单（id, customer_name, items(JSON), total_price, created_at, rated）
+- customers : 顾客账号（username PK, password, role）
+"""
+
 from __future__ import annotations
 
-import json
-import os
+import json   # 订单明细以 JSON 字符串存储
+import os     # 创建目录
 import sqlite3
 from typing import List, Optional
 
@@ -10,17 +26,32 @@ from models import CartItem, Dish
 
 
 class DatabaseManager:
+    """数据库管理器，封装所有 SQLite3 操作。"""
+
+    # ========== 初始化 ==========
+
     def __init__(self, db_path: str = "data/ordering.db") -> None:
+        """
+        构造函数：打开数据库连接并初始化。
+        - check_same_thread=False：解决 Flask 多线程下 SQLite 跨线程报错
+        - row_factory=sqlite3.Row：查询结果可用列名访问，如 row["name"]
+        """
         self.db_path = db_path
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)  # 自动创建 data/ 目录
         self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
         self.connection.row_factory = sqlite3.Row
-        self.initialize()
+        self.initialize()  # 建表 + 首次种子数据
 
     def initialize(self) -> None:
+        """
+        数据库初始化（幂等操作，多次执行不会出错）：
+        1. CREATE TABLE IF NOT EXISTS 建三张表
+        2. ALTER TABLE 兼容旧数据库（列已存在则跳过）
+        3. 如果 dishes 表为空（首次启动），自动导入 136 道菜品
+        """
+        # ---- 三张核心表：dishes / orders / customers ----
         with self.connection:
-            self.connection.execute(
-                """
+            self.connection.execute("""
                 CREATE TABLE IF NOT EXISTS dishes (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
@@ -29,10 +60,8 @@ class DatabaseManager:
                     rating REAL DEFAULT 0.0,
                     image TEXT DEFAULT ''
                 )
-                """
-            )
-            self.connection.execute(
-                """
+            """)
+            self.connection.execute("""
                 CREATE TABLE IF NOT EXISTS orders (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     customer_name TEXT NOT NULL,
@@ -41,17 +70,15 @@ class DatabaseManager:
                     created_at TEXT NOT NULL,
                     rated INTEGER DEFAULT 0
                 )
-                """
-            )
-            self.connection.execute(
-                """
+            """)
+            self.connection.execute("""
                 CREATE TABLE IF NOT EXISTS customers (
                     username TEXT PRIMARY KEY,
                     password TEXT NOT NULL,
                     role TEXT NOT NULL DEFAULT '顾客端'
                 )
-                """
-            )
+            """)
+        # ---- 兼容旧数据库 ----
         try:
             self.connection.execute("ALTER TABLE orders ADD COLUMN rated INTEGER DEFAULT 0")
         except sqlite3.OperationalError:
@@ -60,41 +87,64 @@ class DatabaseManager:
             self.connection.execute("ALTER TABLE dishes ADD COLUMN image TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass
+        # ---- 首次启动自动导入数据 ----
         if self.count_dishes() == 0:
-            self.seed_all_dishes()
-            self.register_customer("顾客", "123456")
+            self.seed_all_dishes()                    # 导入 136 道菜品
+            self.register_customer("顾客", "123456")   # 默认顾客账号（兼容旧数据）
+
+    # ========== 菜品管理（商家端） ==========
 
     def count_dishes(self) -> int:
+        """统计菜品总数。用于判断是否需要导入种子数据。"""
         row = self.connection.execute("SELECT COUNT(*) AS count FROM dishes").fetchone()
         return int(row["count"])
 
     def add_dish(self, dish: Dish) -> Dish:
+        """
+        商家添加菜品。
+        返回的 Dish 对象会被赋予数据库自增 ID（dish.id = cursor.lastrowid）。
+        如果菜名重复（UNIQUE 约束冲突），返回原对象但不报错。
+        """
         try:
-            with self.connection:
+            with self.connection:  # 自动 commit
                 cursor = self.connection.execute(
                     "INSERT INTO dishes (name, price, description, rating, image) VALUES (?, ?, ?, ?, ?)",
                     (dish.name, dish.price, dish.description, dish.rating, dish.image),
                 )
-            dish.id = cursor.lastrowid
+            dish.id = cursor.lastrowid  # 获取数据库分配的自增 ID
             return dish
         except sqlite3.IntegrityError:
-            return dish
+            return dish  # 菜名重复，静默返回
 
     def delete_dish(self, dish_id: int) -> bool:
+        """
+        商家删除菜品。
+        返回 True 表示删除成功，False 表示未找到该菜品。
+        注意：不影响历史订单（订单保存的是菜品快照，不是外键）。
+        """
         with self.connection:
             cursor = self.connection.execute("DELETE FROM dishes WHERE id = ?", (dish_id,))
-        return cursor.rowcount > 0
+        return cursor.rowcount > 0  # rowcount 表示受影响的行数
 
     def get_dish_by_id(self, dish_id: int) -> Optional[Dish]:
+        """根据 ID 查询单个菜品，找不到返回 None。"""
         row = self.connection.execute(
             "SELECT id, name, price, description, rating, image FROM dishes WHERE id = ?",
             (dish_id,),
         ).fetchone()
         if row is None:
             return None
-        return Dish(id=row["id"], name=row["name"], price=row["price"], description=row["description"], rating=row["rating"], image=row["image"])
+        return Dish(
+            id=row["id"], name=row["name"], price=row["price"],
+            description=row["description"], rating=row["rating"], image=row["image"],
+        )
 
     def list_dishes(self, sort_by_rating: bool = False) -> List[Dish]:
+        """
+        查询所有菜品。
+        - sort_by_rating=False：按菜名排序（商家端用）
+        - sort_by_rating=True ：按评分降序（顾客端用，高分在前）
+        """
         query = "SELECT id, name, price, description, rating, image FROM dishes"
         if sort_by_rating:
             query += " ORDER BY rating DESC, name ASC"
@@ -102,36 +152,73 @@ class DatabaseManager:
             query += " ORDER BY name ASC"
         rows = self.connection.execute(query).fetchall()
         return [
-            Dish(id=row["id"], name=row["name"], price=row["price"], description=row["description"], rating=row["rating"], image=row["image"])
-            for row in rows
+            Dish(id=r["id"], name=r["name"], price=r["price"],
+                 description=r["description"], rating=r["rating"], image=r["image"])
+            for r in rows
+        ]
+
+    def search_dishes(self, keyword: str) -> List[Dish]:
+        """
+        模糊搜索菜品：匹配名称或介绍中的关键词。
+        使用 SQL LIKE 语句，%keyword% 表示包含即可。
+        结果按评分降序排列。
+        """
+        keyword = f"%{keyword}%"  # LIKE 通配符
+        rows = self.connection.execute(
+            "SELECT id, name, price, description, rating, image FROM dishes "
+            "WHERE name LIKE ? OR description LIKE ? ORDER BY rating DESC, name ASC",
+            (keyword, keyword),
+        ).fetchall()
+        return [
+            Dish(id=r["id"], name=r["name"], price=r["price"],
+                 description=r["description"], rating=r["rating"], image=r["image"])
+            for r in rows
         ]
 
     def update_dish_rating(self, dish_id: int, rating: float) -> bool:
+        """
+        更新菜品评分（顾客评价后调用）。
+        当前实现为直接覆盖，未来可改为平均值计算。
+        """
         with self.connection:
             cursor = self.connection.execute(
-                "UPDATE dishes SET rating = ? WHERE id = ?",
-                (rating, dish_id),
+                "UPDATE dishes SET rating = ? WHERE id = ?", (rating, dish_id),
             )
         return cursor.rowcount > 0
 
+    # ========== 订单管理 ==========
+
     def save_order(self, customer_name: str, items: List[CartItem], total_price: float) -> int:
+        """
+        保存订单到数据库。
+        
+        关键设计——订单快照（Snapshot）：
+        不同于存 dish_id 外键，而是把菜名和价格以 JSON 形式直接写入订单。
+        这样做的好处：即使商家后续修改价格或删除菜品，历史订单数据不受影响。
+        """
+        # 将 CartItem 列表转为 JSON 可序列化的字典列表
         payload = [
             {
-                "dish_id": item.dish.id,
-                "dish_name": item.dish.name,
-                "quantity": item.quantity,
-                "unit_price": item.dish.price,
+                "dish_id": item.dish.id,         # 菜品ID（仅用于追溯）
+                "dish_name": item.dish.name,     # ★ 快照：菜名
+                "quantity": item.quantity,        # 数量
+                "unit_price": item.dish.price,   # ★ 快照：单价
             }
             for item in items
         ]
         with self.connection:
             cursor = self.connection.execute(
-                "INSERT INTO orders (customer_name, items, total_price, created_at) VALUES (?, ?, ?, datetime('now'))",
+                "INSERT INTO orders (customer_name, items, total_price, created_at) "
+                "VALUES (?, ?, ?, datetime('now'))",  # datetime('now') 自动生成时间
                 (customer_name, json.dumps(payload, ensure_ascii=False), total_price),
             )
-        return cursor.lastrowid
+        return cursor.lastrowid  # 返回新订单号
 
     def list_orders(self) -> List[dict]:
+        """
+        查询所有订单，按时间倒序（最新在前）。
+        返回的每条订单中 items 字段是 JSON 解析后的列表。
+        """
         rows = self.connection.execute(
             "SELECT id, customer_name, items, total_price, created_at FROM orders ORDER BY id DESC"
         ).fetchall()
@@ -139,35 +226,44 @@ class DatabaseManager:
             {
                 "id": row["id"],
                 "customer_name": row["customer_name"],
-                "items": json.loads(row["items"]),
+                "items": json.loads(row["items"]),     # JSON → Python 列表
                 "total_price": row["total_price"],
                 "created_at": row["created_at"],
             }
             for row in rows
         ]
 
-    def search_dishes(self, keyword: str) -> List[Dish]:
-        keyword = f"%{keyword}%"
-        rows = self.connection.execute(
-            "SELECT id, name, price, description, rating, image FROM dishes WHERE name LIKE ? OR description LIKE ? ORDER BY rating DESC, name ASC",
-            (keyword, keyword),
-        ).fetchall()
-        return [
-            Dish(id=row["id"], name=row["name"], price=row["price"], description=row["description"], rating=row["rating"], image=row["image"])
-            for row in rows
-        ]
+    # ========== 评价管理 ==========
 
     def is_order_rated(self, order_id: int) -> bool:
+        """
+        检查订单是否已评价。
+        rated 字段：0=未评价，1=已评价。
+        这是评分防重复的核心：评价前先检查，已评价则拒绝。
+        """
         row = self.connection.execute("SELECT rated FROM orders WHERE id = ?", (order_id,)).fetchone()
         return row is not None and bool(row["rated"])
 
     def mark_order_rated(self, order_id: int) -> bool:
+        """
+        标记订单为"已评价"（rated = 1）。
+        调用此方法后，该订单的评价按钮消失，无法再次评价。
+        """
         with self.connection:
             cursor = self.connection.execute("UPDATE orders SET rated = 1 WHERE id = ?", (order_id,))
         return cursor.rowcount > 0
 
-    # AI assisted (GitHub Copilot / DeepSeek V4 Pro): seed data formatting
+    # ========== 种子数据（首次初始化时自动导入） ==========
+
     def seed_all_dishes(self) -> int:
+        """
+        批量导入 136 道菜品。
+        仅在数据库为空时调用一次。使用 INSERT OR IGNORE 防止重复导入。
+        菜品按类型定价：素菜 10-18 元、荤菜 22-42 元、套餐 28-65 元、汤 8-18 元。
+        图片文件名与菜名一一对应（如 "宫保鸡丁.jpg"）。
+        返回成功导入的菜品数量。
+        """
+        # AI assisted (GitHub Copilot / DeepSeek V4 Pro): seed data formatting
         dishes_data = [
             ("米饭", 2.0, "白米饭"),
             ("五香豆干", 12.0, "五香卤制，软嫩入味"),
@@ -308,7 +404,7 @@ class DatabaseManager:
         ]
         count = 0
         for name, price, description in dishes_data:
-            image = name + ".jpg"
+            image = name + ".jpg"  # 图片文件名与菜名对应
             try:
                 with self.connection:
                     self.connection.execute(
@@ -317,12 +413,22 @@ class DatabaseManager:
                     )
                 count += 1
             except sqlite3.IntegrityError:
-                pass
+                pass  # 菜名重复则跳过
         return count
 
+    # ========== 顾客账号管理 ==========
+
     def register_customer(self, username: str, password: str) -> tuple[bool, str]:
+        """
+        注册新顾客。
+        返回值：(是否成功, 提示信息)
+        - 检查空用户名/密码
+        - 检查用户名是否已被占用
+        - INSERT 写入 customers 表
+        """
         if not username or not password:
             return False, "用户名和密码不能为空"
+        # 先查重
         existing = self.connection.execute(
             "SELECT username FROM customers WHERE username = ?", (username,)
         ).fetchone()
@@ -339,6 +445,11 @@ class DatabaseManager:
             return False, "该用户名已被注册"
 
     def validate_customer(self, username: str, password: str) -> dict | None:
+        """
+        验证顾客登录。
+        根据用户名和密码查询 customers 表。
+        返回用户信息字典或 None（验证失败）。
+        """
         row = self.connection.execute(
             "SELECT username, password, role FROM customers WHERE username = ? AND password = ?",
             (username, password),
@@ -347,5 +458,8 @@ class DatabaseManager:
             return None
         return {"username": row["username"], "role": row["role"]}
 
+    # ========== 清理 ==========
+
     def close(self) -> None:
+        """关闭数据库连接（应用退出时调用）。"""
         self.connection.close()
